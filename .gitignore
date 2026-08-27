@@ -1,0 +1,10 @@
+# local instructions to Claude Code, not part of the shipped project
+CLAUDE.md
+
+# phase-2 C bgworker build artifacts
+src/*.o
+src/*.bc
+src/*.so
+
+# CLI build output
+cli/pgslot

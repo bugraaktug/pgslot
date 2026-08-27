@@ -1,0 +1,43 @@
+# pgslot CLI
+
+A Go binary over pgslot's read-only views -- never touches the raw tables,
+never mutates a slot. Same read-only contract as the SQL extension itself.
+
+## Build
+
+```bash
+cd cli && go build -o pgslot .
+```
+
+Ships as a single static binary -- no runtime dependency for whoever installs
+it.
+
+## Connect
+
+Uses the standard `PG*` environment variables (`PGHOST`, `PGUSER`,
+`PGDATABASE`, ...), same as `psql`, or a full connection string via
+`-dsn` / `PGSLOT_DSN`. Connect as a role granted `pgslot_monitor`
+(see `../scripts/roles.sql`) -- the CLI only ever needs `SELECT` on the views.
+
+## Commands
+
+```bash
+pgslot health              # cluster-wide summary
+pgslot slots                # per-slot status table
+pgslot watch [-interval 2s] # auto-refreshing status table
+pgslot history <slot> [-n 20]  # per-slot snapshot history
+```
+
+```
+SLOT            STATE      WAL DISTANCE    RATE
+walkrie         HEALTHY    1.2 GB          -12 MB/s
+debezium        WARNING    82 GB           +43 MB/s
+old_slot        CRITICAL   412 GB          +0 MB/s
+```
+
+RATE is net WAL retention change (`wal_growth_bytes_per_sec -
+consumer_bytes_per_sec`): negative means the consumer is catching up,
+positive means retained WAL is growing.
+
+`pgslot history` reads `pgslot.slot_history_rates` -- the full per-snapshot
+time series behind `slot_rates`, which only exposes each slot's latest rate.
