@@ -1,10 +1,14 @@
--- pgslot--0.1.sql
+-- pgslot--0.2.sql
 -- Replication slot WAL health, history, and diagnostics.
 --
 -- Design notes:
 --   * No slot-mutating actions (no drop/advance/create). Read + diagnose only.
---   * Collection is explicit (pgslot.collect()), called by an external
---     scheduler. No shared_preload_libraries, no restart required.
+--   * Collection is pgslot.collect(), a plain SQL/PLpgSQL function -- this
+--     file alone needs no C compile step and no restart. The recommended
+--     way to actually run it is src/'s background worker (shared_preload_
+--     libraries, restart required); calling it yourself on an external
+--     schedule (cron/systemd/k8s CronJob) remains a supported fallback for
+--     anyone who doesn't want to restart Postgres. See src/README.md.
 --   * Raw tables are not exposed directly; all read access goes through
 --     views, so the storage layout can change across versions without
 --     breaking consumers.

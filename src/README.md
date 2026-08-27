@@ -1,48 +1,98 @@
-# src/ (phase 2 -- background worker)
+# pgslot background worker
 
-v0.1 ships no C code. `pgslot.collect()` is a plain SQL/PLpgSQL function
-called externally on a timer (systemd, k8s CronJob, manual psql, the pgslot
-CLI's own loop) -- no `shared_preload_libraries`, no restart to install.
+**Autonomous, in-database collection for pgslot.**
 
-Phase 2 adds an optional background worker (`pgslot_worker.so`) that runs its
-own `WaitLatch` loop and calls the same collection logic autonomously, for
-deployments that don't want to run an external scheduler at all. **Built and
-tested live** (compiled clean under PG15, ran against a real database with
-active logical replication slots, ticking `collect()` on schedule):
+Runs `pgslot.collect()` (and `pgslot.prune()`) on its own timer, inside
+Postgres, via `RegisterBackgroundWorker()` -- so a deployment that doesn't
+want to run an external scheduler at all doesn't have to. Built and tested
+live: compiled clean under PG15 and run against a real database with active
+logical replication slots, ticking `collect()` on schedule and correctly
+computing consumption rates from the resulting snapshots.
 
-- `pgslot_worker.c` -- `_PG_init()` registers the bgworker via `RegisterBackgroundWorker()`;
-  `pgslot_main()` loops calling `pgslot.collect()`, and `pgslot.prune()` on its own
-  slower cadence, via SPI
-- `pgslot_config.h`/`.c` -- the GUCs: `pgslot.collect_interval_ms`,
-  `pgslot.prune_interval_ms` (0 disables worker-driven pruning),
-  `pgslot.prune_keep_hours`, `pgslot.database`, `pgslot.role`. The worker
-  stays unregistered until `pgslot.database` is set; `pgslot.role` has no
-  default on purpose (see `pgslot_config.h`) -- FATALs rather than
-  connecting as bootstrap superuser
+This is the **recommended** way to run collection (see the root
+[README](../README.md#collect)) -- calling `pgslot.collect()` yourself on an
+external cron/systemd/k8s schedule remains a fully supported fallback for
+anyone who doesn't want to restart Postgres to enable
+`shared_preload_libraries`.
 
-Built with its **own `src/Makefile`** (`MODULE_big`/`OBJS`), deliberately
-kept separate from the top-level `Makefile` -- so `make install` at the repo
-root stays pure SQL, no Go/C toolchain required just to install pgslot
-itself. To build and try the worker:
+## Why a background worker
+
+An external scheduler is one more moving part to deploy, monitor, and keep
+in sync with the database it's collecting from -- a missed cron run, a
+misconfigured k8s CronJob, or a systemd timer nobody remembers exists are
+all silent failure modes. A worker registered via
+`shared_preload_libraries` lives and dies with the postmaster: it restarts
+automatically on crash (`bgw_restart_time`), needs no separate process
+supervision, and there's nothing external to misconfigure once
+`pgslot.database`/`pgslot.role` are set.
+
+* **`WaitLatch`-driven timer loop**, not a busy poll -- sleeps for
+  `pgslot.collect_interval_ms` between ticks, woken early and harmlessly by
+  spurious latch sets (normal Postgres bgworker behavior).
+* **Independent prune cadence** -- `pgslot.prune()` runs on its own slower
+  timer (`pgslot.prune_interval_ms`), not once per `collect()` tick.
+* **No default role** -- `pgslot.role` must be set explicitly; the worker
+  `FATAL`s at startup rather than silently connecting as bootstrap
+  superuser.
+* **One SPI call per tick, in its own transaction** -- errors (extension
+  not yet created in this database, role misconfigured) are logged as a
+  `WARNING` and retried next interval rather than crashing the worker.
+
+## Build
+
+Kept in its own `Makefile`, deliberately separate from the top-level one --
+the extension's own `make install` stays pure SQL, no C toolchain required
+just to install pgslot itself.
 
 ```bash
-cd src && make && sudo make install     # installs pgslot.so onto the PGXS lib path
+cd src
+make && sudo make install
 ```
 
-Then in `postgresql.conf` (restart required):
+## Configure
+
+`pgslot.role` needs a **real login role that's a member of
+`pgslot_collector`** -- the `pgslot_collector` role itself, defined in
+`../scripts/roles.sql`, is `NOLOGIN` and can't be connected as directly.
+`roles.sql` doesn't create a login role for you; wire one yourself, e.g.:
+
+```sql
+CREATE ROLE pgslot_worker_svc LOGIN IN ROLE pgslot_collector;
+-- no password needed: BackgroundWorkerInitializeConnection() connects
+-- in-process, bypassing pg_hba/libpq authentication entirely
+```
+
+(`roles.sql`'s own commented example at the bottom does the same thing
+under the name `pgslot_cron` -- pick either name, or your own; what matters
+is `LOGIN IN ROLE pgslot_collector`.)
+
+All GUCs live in `pgslot_config.h`/`.c`:
+
+| GUC | Default | Notes |
+|---|---|---|
+| `pgslot.database` | unset | Worker stays unregistered until this is set. |
+| `pgslot.role` | unset | No default -- `FATAL`s rather than using bootstrap superuser. Must be `LOGIN IN ROLE pgslot_collector`. |
+| `pgslot.collect_interval_ms` | `60000` | |
+| `pgslot.prune_interval_ms` | `3600000` | `0` disables worker-driven pruning. |
+| `pgslot.prune_keep_hours` | `168` | Passed as `pgslot.prune(keep_hours)`'s argument. |
 
 ```
+# postgresql.conf -- restart required
 shared_preload_libraries = 'pgslot'
 pgslot.database = 'yourdb'
-pgslot.role     = 'some_role_in_pgslot_collector'
+pgslot.role     = 'pgslot_worker_svc'
 ```
 
-Still open: one worker instance connects to exactly one database
-(`BackgroundWorkerInitializeConnection` takes a single dbname), so a
-cluster running pgslot in several databases needs more than one registered
-worker -- not solved yet.
+## Status
 
-The SQL API (`pgslot.collect()`, the views, grants) does not change when this
-lands -- the bgworker just calls the same `collect()` function internally
-instead of a cron job calling it externally. Existing installs stay on the
-external-scheduler path unless they opt into preloading the library.
+Working, one open limitation: a single worker instance connects to exactly
+one database (`BackgroundWorkerInitializeConnection` takes a single
+dbname), so a cluster running pgslot across several databases needs more
+than one registered worker -- not solved yet. The SQL API
+(`pgslot.collect()`, the views, grants) is identical either way; the worker
+just calls the same function internally instead of an external scheduler
+calling it.
+
+## License
+
+Part of pgslot, licensed under the [Apache License, Version 2.0](../LICENSE).

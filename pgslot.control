@@ -1,4 +1,4 @@
 comment = 'Replication slot WAL health, history, and diagnostics'
-default_version = '0.1'
+default_version = '0.2'
 relocatable = false
 schema = pgslot
