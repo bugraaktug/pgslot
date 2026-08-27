@@ -8,3 +8,6 @@ src/*.so
 
 # CLI build output
 cli/pgslot
+
+# editor swap files
+*.swp

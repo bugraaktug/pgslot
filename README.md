@@ -17,10 +17,13 @@ pgslot/
 │   └── roles.sql             pgslot_monitor / pgslot_collector / pgslot_adapter
 ├── adapters/
 │   └── README.md              reporting contract (Walkrie is the worked example)
-├── src/
-│   └── README.md              phase-2 background worker (pgslot_worker.c)
-├── cli/
-│   └── README.md              pgslot CLI (health/slots/watch/history)
+├── src/                       phase-2 background worker -- built and tested live,
+│   ├── pgslot_worker.c          not part of the top-level `make install`
+│   ├── pgslot_config.{h,c}
+│   └── Makefile                its own PGXS build (see src/README.md)
+├── cli/                       Go CLI -- health/slots/watch/history
+│   ├── main.go, cmd_*.go, internal/
+│   └── Makefile
 └── test/
     └── sql/basic.sql            smoke test
 ```
@@ -30,13 +33,22 @@ pgslot/
 ```bash
 make install                                    # copies control/sql files onto PGXS path
 psql -d yourdb -c "CREATE EXTENSION pgslot;"
-psql -d yourdb -f scripts/roles.sql
+psql -d yourdb -f scripts/roles.sql             # creates the NOLOGIN group roles only
+
+# scripts/roles.sql does NOT create any login role -- wire one to each group
+# role you actually need (adjust names/passwords for your deployment):
+psql -d yourdb -c "CREATE ROLE pgslot_cron    LOGIN PASSWORD '...' IN ROLE pgslot_collector;"
+psql -d yourdb -c "CREATE ROLE grafana_reader LOGIN PASSWORD '...' IN ROLE pgslot_monitor;"
 ```
+
+A database superuser bypasses all of this (Postgres superusers skip GRANT/
+REVOKE checks entirely) -- fine for local testing, not recommended for a
+real deployment since it's far more privilege than pgslot's views need.
 
 ## Collect
 
 No background worker in v0.1 -- wire `pgslot.collect()` into whatever
-scheduler you already have:
+scheduler you already have, as the `pgslot_cron` role created above:
 
 ```bash
 # cron / systemd timer
@@ -47,7 +59,8 @@ scheduler you already have:
 ```
 
 or a k8s `CronJob` running the equivalent `psql` command. See `src/README.md`
-for the phase-2 autonomous bgworker path.
+for the phase-2 autonomous bgworker path, already built and tested against a
+real database with active replication slots.
 
 ## Read
 

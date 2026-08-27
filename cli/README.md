@@ -6,11 +6,14 @@ never mutates a slot. Same read-only contract as the SQL extension itself.
 ## Build
 
 ```bash
-cd cli && go build -o pgslot .
+cd cli && make build      # ./pgslot
+make install               # installs to $PREFIX/bin (default /usr/local/bin)
 ```
 
 Ships as a single static binary -- no runtime dependency for whoever installs
-it.
+it. Kept out of the top-level `Makefile`, same reasoning as `src/Makefile`:
+the extension's own `make install` stays pure SQL, no Go toolchain needed
+just to install pgslot itself.
 
 ## Connect
 
