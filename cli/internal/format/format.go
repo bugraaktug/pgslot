@@ -4,6 +4,7 @@ package format
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 var NoColor = os.Getenv("NO_COLOR") != ""
@@ -44,21 +45,38 @@ func Rate(netBytesPerSec float64) string {
 }
 
 // StatusLabel maps pgslot's status column (ok/warning/critical) to the CLI's
-// HEALTHY/WARNING/CRITICAL display label, colored unless NoColor is set.
+// plain HEALTHY/WARNING/CRITICAL display label -- no color. Use this inside
+// anything that goes through text/tabwriter: tabwriter counts raw bytes,
+// including invisible ANSI escapes, when computing column widths, so a
+// colored cell reports as wider than it looks and throws off alignment
+// against uncolored cells (e.g. the header) in the same column. Colorize
+// the fully-aligned output afterward with Colorize instead.
 func StatusLabel(status string) string {
-	var label, color string
 	switch status {
 	case "ok":
-		label, color = "HEALTHY", colorGreen
+		return "HEALTHY"
 	case "warning":
-		label, color = "WARNING", colorYellow
+		return "WARNING"
 	case "critical":
-		label, color = "CRITICAL", colorRed
+		return "CRITICAL"
 	default:
-		label, color = status, ""
+		return status
 	}
-	if NoColor || color == "" {
-		return label
+}
+
+// Colorize wraps HEALTHY/WARNING/CRITICAL in their status colors within
+// already-rendered (and thus already correctly column-aligned) text. Must
+// run after tabwriter.Flush, never before -- see StatusLabel.
+func Colorize(rendered string) string {
+	if NoColor {
+		return rendered
 	}
-	return color + label + colorReset
+	for label, color := range map[string]string{
+		"HEALTHY":  colorGreen,
+		"WARNING":  colorYellow,
+		"CRITICAL": colorRed,
+	} {
+		rendered = strings.ReplaceAll(rendered, label, color+label+colorReset)
+	}
+	return rendered
 }

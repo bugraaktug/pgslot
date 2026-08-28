@@ -85,6 +85,78 @@ type HistoryPoint struct {
 	ConsumerRate  sql.NullFloat64
 }
 
+type PipelineRow struct {
+	SlotName        string
+	Status          string
+	Reason          string
+	RetainedBytes   sql.NullInt64
+	AdapterName     sql.NullString
+	AdapterMetrics  []byte // raw jsonb, nil if no adapter has reported for this slot
+	AdapterSampleAt sql.NullTime
+}
+
+// FetchPipeline returns pgslot.slot_pipeline -- slot_health joined against
+// each slot's latest adapter-reported metrics (Walkrie, or any other
+// pgslot_adapter member). AdapterMetrics is schema-free by design (see
+// adapters/README.md), so callers must not assume any particular key exists.
+func FetchPipeline(db *sql.DB) ([]PipelineRow, error) {
+	rows, err := db.Query(`
+		SELECT slot_name, status, reason, retained_bytes,
+		       adapter_name, adapter_metrics, adapter_sample_at
+		FROM pgslot.slot_pipeline
+		ORDER BY slot_name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []PipelineRow
+	for rows.Next() {
+		var p PipelineRow
+		if err := rows.Scan(&p.SlotName, &p.Status, &p.Reason, &p.RetainedBytes,
+			&p.AdapterName, &p.AdapterMetrics, &p.AdapterSampleAt); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+type PipelineHistoryPoint struct {
+	AdapterName string
+	Metrics     []byte // raw jsonb
+	CollectedAt time.Time
+}
+
+// FetchPipelineHistory returns pgslot.slot_pipeline_history for slotName --
+// the full per-report time series behind slot_pipeline's latest-only join,
+// same relationship FetchHistory/slot_history_rates has to slot_current.
+// Runs on its own time axis: adapter report ticks and pgslot collect()
+// ticks are independently scheduled, so don't zip these rows against
+// FetchHistory's by index or timestamp.
+func FetchPipelineHistory(db *sql.DB, slotName string, limit int) ([]PipelineHistoryPoint, error) {
+	rows, err := db.Query(`
+		SELECT adapter_name, metrics, collected_at
+		FROM pgslot.slot_pipeline_history
+		WHERE slot_name = $1
+		ORDER BY collected_at DESC
+		LIMIT $2`, slotName, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []PipelineHistoryPoint
+	for rows.Next() {
+		var p PipelineHistoryPoint
+		if err := rows.Scan(&p.AdapterName, &p.Metrics, &p.CollectedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 // FetchHistory returns up to limit snapshots for slotName, newest first.
 func FetchHistory(db *sql.DB, slotName string, limit int) ([]HistoryPoint, error) {
 	rows, err := db.Query(`

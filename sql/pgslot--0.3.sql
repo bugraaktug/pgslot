@@ -1,4 +1,4 @@
--- pgslot--0.2.sql
+-- pgslot--0.3.sql
 -- Replication slot WAL health, history, and diagnostics.
 --
 -- Design notes:
@@ -138,16 +138,23 @@ REVOKE ALL ON FUNCTION prune(integer) FROM PUBLIC;
 CREATE FUNCTION report_metric(p_adapter_name text, p_slot_name name, p_metrics jsonb)
 RETURNS void
 LANGUAGE sql
+SECURITY DEFINER
+SET search_path = pgslot, pg_catalog
 AS $$
     INSERT INTO adapter_metrics (adapter_name, slot_name, metrics)
     VALUES (p_adapter_name, p_slot_name, p_metrics);
 $$;
 
+REVOKE ALL ON FUNCTION report_metric(text, name, jsonb) FROM PUBLIC;
+
 COMMENT ON FUNCTION report_metric(text, name, jsonb) IS
     'Adapter entry point. e.g.: SELECT pgslot.report_metric(''walkrie'', '
     '''walkrie_cdc'', jsonb_build_object(''processed_lsn'', pg_current_wal_lsn()::text, '
-    '''events_per_sec'', 1420, ''queue_depth'', 12)). Runs as SECURITY INVOKER -- '
-    'grant EXECUTE to the adapter''s own role, not to pgslot_monitor.';
+    '''events_per_sec'', 1420, ''queue_depth'', 12)). SECURITY DEFINER (like '
+    'collect()/prune()) with search_path pinned to pgslot, pg_catalog -- so '
+    'EXECUTE alone is sufficient for an adapter role and adapter_metrics stays '
+    'unreachable directly. Grant EXECUTE to the adapter''s own role, not to '
+    'pgslot_monitor.';
 
 -- =========================================================================
 -- 4. Diagnostic views (read surface)
@@ -282,3 +289,20 @@ LEFT JOIN LATERAL (
 COMMENT ON VIEW slot_pipeline IS
     'slot_health joined against the latest adapter-reported metrics, e.g. '
     'Walkrie''s processed_lsn/events_per_sec alongside Postgres-side slot lag.';
+
+CREATE VIEW slot_pipeline_history AS
+SELECT
+    m.slot_name,
+    m.adapter_name,
+    m.metrics,
+    m.collected_at
+FROM adapter_metrics m
+ORDER BY slot_name, collected_at DESC;
+
+COMMENT ON VIEW slot_pipeline_history IS
+    'Full per-report time series of adapter-reported metrics (all adapters, '
+    'all slots) -- the history behind slot_pipeline''s latest-only join, same '
+    'relationship slot_history_rates has to slot_rates. Feeds '
+    '`pgslot pipeline-history <slot>`. Runs on its own time axis -- adapter '
+    'report ticks and pgslot collect() ticks are on independent schedules, '
+    'so don''t assume timestamps here line up with slot_history_rates rows.';

@@ -45,6 +45,8 @@ Usage:
   pgslot slots                per-slot status table
   pgslot watch [-interval N]  auto-refreshing status table
   pgslot history <slot> [-n N]  per-slot snapshot history
+  pgslot pipeline             per-slot status joined with adapter-reported metrics
+  pgslot pipeline-history <slot> [-n N]  per-slot adapter-reported metrics history
 
 Connection: set standard PG* env vars (PGHOST, PGUSER, PGDATABASE, ...),
 same as psql, or pass -dsn / set PGSLOT_DSN.
@@ -87,6 +89,13 @@ func run(cmd string, db *sql.DB, args []string, interval time.Duration, n int) e
 		return cmdSlots(db, os.Stdout)
 	case "watch":
 		return cmdWatch(db, os.Stdout, interval)
+	case "pipeline":
+		return cmdPipeline(db, os.Stdout)
+	case "pipeline-history":
+		if len(args) < 1 {
+			return fmt.Errorf("pipeline-history requires a slot name: pgslot pipeline-history <slot>")
+		}
+		return cmdPipelineHistory(db, os.Stdout, args[0], n)
 	case "history":
 		if len(args) < 1 {
 			return fmt.Errorf("history requires a slot name: pgslot history <slot>")
