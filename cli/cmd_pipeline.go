@@ -11,7 +11,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/bugraaktug/pgslot/cli/internal/format"
-	"github.com/bugraaktug/pgslot/cli/internal/pg"
+	"github.com/bugraaktug/pgslot/cli/pg"
 )
 
 // metricField pulls a single key out of a slot_pipeline row's raw
@@ -46,7 +46,7 @@ func metricField(raw []byte, key string) string {
 func renderPipelineTable(w io.Writer, rows []pg.PipelineRow) {
 	var buf bytes.Buffer
 	tw := tabwriter.NewWriter(&buf, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "SLOT\tSTATE\tRETAINED\tADAPTER\tPROCESSED LSN\tEVENTS/SEC\tQUEUE\tSINK\tLAST REPORT")
+	fmt.Fprintln(tw, "SLOT\tSTATE\tACTIVE\tRETAINED\tADAPTER\tPROCESSED LSN\tEVENTS/SEC\tQUEUE\tSINK\tLAST REPORT")
 	for _, r := range rows {
 		retained := "n/a"
 		if r.RetainedBytes.Valid {
@@ -60,8 +60,12 @@ func renderPipelineTable(w io.Writer, rows []pg.PipelineRow) {
 		if r.AdapterSampleAt.Valid {
 			lastReport = r.AdapterSampleAt.Time.Format("2006-01-02 15:04:05")
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			r.SlotName, format.StatusLabel(r.Status), retained, adapter,
+		active := "no"
+		if r.Active {
+			active = "yes"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			r.SlotName, format.StatusLabel(r.Status), active, retained, adapter,
 			metricField(r.AdapterMetrics, "processed_lsn"),
 			metricField(r.AdapterMetrics, "events_per_sec"),
 			metricField(r.AdapterMetrics, "queue_depth"),

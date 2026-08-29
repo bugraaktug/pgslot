@@ -1,4 +1,4 @@
--- pgslot--0.3.sql
+-- pgslot--0.5.sql
 -- Replication slot WAL health, history, and diagnostics.
 --
 -- Design notes:
@@ -276,7 +276,8 @@ SELECT
     h.retained_bytes,
     a.adapter_name,
     a.metrics             AS adapter_metrics,
-    a.collected_at         AS adapter_sample_at
+    a.collected_at         AS adapter_sample_at,
+    h.active
 FROM slot_health h
 LEFT JOIN LATERAL (
     SELECT adapter_name, metrics, collected_at
@@ -288,7 +289,10 @@ LEFT JOIN LATERAL (
 
 COMMENT ON VIEW slot_pipeline IS
     'slot_health joined against the latest adapter-reported metrics, e.g. '
-    'Walkrie''s processed_lsn/events_per_sec alongside Postgres-side slot lag.';
+    'Walkrie''s processed_lsn/events_per_sec alongside Postgres-side slot lag. '
+    'Includes active separately from status: a slot can be critical while '
+    'still active, or critical because it is inactive -- the two are not '
+    'the same fact.';
 
 CREATE VIEW slot_pipeline_history AS
 SELECT
@@ -306,3 +310,22 @@ COMMENT ON VIEW slot_pipeline_history IS
     '`pgslot pipeline-history <slot>`. Runs on its own time axis -- adapter '
     'report ticks and pgslot collect() ticks are on independent schedules, '
     'so don''t assume timestamps here line up with slot_history_rates rows.';
+
+CREATE VIEW available_publications AS
+SELECT
+    p.pubname,
+    p.pubowner::regrole::text AS owner,
+    p.puballtables,
+    p.pubinsert,
+    p.pubupdate,
+    p.pubdelete,
+    p.pubtruncate,
+    p.pubviaroot
+FROM pg_publication p
+ORDER BY p.pubname;
+
+COMMENT ON VIEW available_publications IS
+    'Read-only wrapper over pg_publication -- informational only, cannot '
+    'be joined to slot_health since pg_replication_slots does not record '
+    'which publication a slot consumes (that mapping lives only in '
+    'subscriber/adapter config).';

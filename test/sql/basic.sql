@@ -13,6 +13,7 @@ SELECT count(*) FROM pgslot.slot_health;
 SELECT count(*) FROM pgslot.wal_summary;
 SELECT count(*) FROM pgslot.slot_pipeline;
 SELECT count(*) FROM pgslot.slot_pipeline_history;
+SELECT count(*) FROM pgslot.available_publications;
 
 -- adapter reporting path
 SELECT pgslot.report_metric('test_adapter', 'nonexistent_slot',

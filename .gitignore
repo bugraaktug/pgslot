@@ -9,5 +9,8 @@ src/*.so
 # CLI build output
 cli/pgslot
 
+# UI build output
+ui/pgslot-ui
+
 # editor swap files
 *.swp

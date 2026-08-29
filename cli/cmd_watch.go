@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bugraaktug/pgslot/cli/internal/pg"
+	"github.com/bugraaktug/pgslot/cli/pg"
 )
 
 const clearScreen = "\033[H\033[2J"

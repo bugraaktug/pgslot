@@ -21,7 +21,8 @@ GRANT SELECT ON
     pgslot.slot_health,
     pgslot.wal_summary,
     pgslot.slot_pipeline,
-    pgslot.slot_pipeline_history
+    pgslot.slot_pipeline_history,
+    pgslot.available_publications
 TO pgslot_monitor;
 
 -- No SELECT on pgslot.slot_history or pgslot.adapter_metrics directly --

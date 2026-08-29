@@ -93,6 +93,10 @@ type PipelineRow struct {
 	AdapterName     sql.NullString
 	AdapterMetrics  []byte // raw jsonb, nil if no adapter has reported for this slot
 	AdapterSampleAt sql.NullTime
+	// Active is independent of Status: a slot can be critical while still
+	// active, or critical because it is inactive -- the two are not the
+	// same fact (added in slot_pipeline as of pgslot 0.5).
+	Active bool
 }
 
 // FetchPipeline returns pgslot.slot_pipeline -- slot_health joined against
@@ -102,7 +106,7 @@ type PipelineRow struct {
 func FetchPipeline(db *sql.DB) ([]PipelineRow, error) {
 	rows, err := db.Query(`
 		SELECT slot_name, status, reason, retained_bytes,
-		       adapter_name, adapter_metrics, adapter_sample_at
+		       adapter_name, adapter_metrics, adapter_sample_at, active
 		FROM pgslot.slot_pipeline
 		ORDER BY slot_name`)
 	if err != nil {
@@ -114,7 +118,44 @@ func FetchPipeline(db *sql.DB) ([]PipelineRow, error) {
 	for rows.Next() {
 		var p PipelineRow
 		if err := rows.Scan(&p.SlotName, &p.Status, &p.Reason, &p.RetainedBytes,
-			&p.AdapterName, &p.AdapterMetrics, &p.AdapterSampleAt); err != nil {
+			&p.AdapterName, &p.AdapterMetrics, &p.AdapterSampleAt, &p.Active); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+type AvailablePublication struct {
+	Name      string
+	Owner     string
+	AllTables bool
+	Insert    bool
+	Update    bool
+	Delete    bool
+	Truncate  bool
+	ViaRoot   bool
+}
+
+// FetchAvailablePublications returns pgslot.available_publications --
+// informational only, cannot be joined against slot_health since
+// pg_replication_slots does not record which publication a slot consumes.
+func FetchAvailablePublications(db *sql.DB) ([]AvailablePublication, error) {
+	rows, err := db.Query(`
+		SELECT pubname, owner, puballtables, pubinsert, pubupdate,
+		       pubdelete, pubtruncate, pubviaroot
+		FROM pgslot.available_publications
+		ORDER BY pubname`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []AvailablePublication
+	for rows.Next() {
+		var p AvailablePublication
+		if err := rows.Scan(&p.Name, &p.Owner, &p.AllTables, &p.Insert,
+			&p.Update, &p.Delete, &p.Truncate, &p.ViaRoot); err != nil {
 			return nil, err
 		}
 		out = append(out, p)

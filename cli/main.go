@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bugraaktug/pgslot/cli/internal/pg"
+	"github.com/bugraaktug/pgslot/cli/pg"
 )
 
 // known flag names for every subcommand, used by reorderFlags.
@@ -47,6 +47,7 @@ Usage:
   pgslot history <slot> [-n N]  per-slot snapshot history
   pgslot pipeline             per-slot status joined with adapter-reported metrics
   pgslot pipeline-history <slot> [-n N]  per-slot adapter-reported metrics history
+  pgslot publications         list publications on the cluster
 
 Connection: set standard PG* env vars (PGHOST, PGUSER, PGDATABASE, ...),
 same as psql, or pass -dsn / set PGSLOT_DSN.
@@ -91,6 +92,8 @@ func run(cmd string, db *sql.DB, args []string, interval time.Duration, n int) e
 		return cmdWatch(db, os.Stdout, interval)
 	case "pipeline":
 		return cmdPipeline(db, os.Stdout)
+	case "publications":
+		return cmdPublications(db, os.Stdout)
 	case "pipeline-history":
 		if len(args) < 1 {
 			return fmt.Errorf("pipeline-history requires a slot name: pgslot pipeline-history <slot>")

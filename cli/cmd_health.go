@@ -6,7 +6,7 @@ import (
 	"io"
 
 	"github.com/bugraaktug/pgslot/cli/internal/format"
-	"github.com/bugraaktug/pgslot/cli/internal/pg"
+	"github.com/bugraaktug/pgslot/cli/pg"
 )
 
 func cmdHealth(db *sql.DB, w io.Writer) error {

@@ -31,6 +31,7 @@ pgslot watch [-interval 2s] # auto-refreshing status table
 pgslot history <slot> [-n 20]  # per-slot snapshot history
 pgslot pipeline              # per-slot status joined with adapter-reported metrics
 pgslot pipeline-history <slot> [-n 20]  # per-slot adapter-reported metrics history
+pgslot publications          # list publications on the cluster
 ```
 
 ```
@@ -52,10 +53,15 @@ next to whatever the slot's adapter (Walkrie, or any other `pgslot_adapter`
 member) last reported via `report_metric()`:
 
 ```
-SLOT       STATE      RETAINED  ADAPTER  PROCESSED LSN  EVENTS/SEC  QUEUE  SINK  LAST REPORT
-cdc_slot   WARNING    23.4 MB   walkrie  0/40F01AC8     1           0      ok    2026-08-28 15:02:37
-old_slot   CRITICAL   412 GB    n/a      n/a            n/a         n/a    n/a   n/a
+SLOT       STATE      ACTIVE  RETAINED  ADAPTER  PROCESSED LSN  EVENTS/SEC  QUEUE  SINK  LAST REPORT
+cdc_slot   WARNING    yes     23.4 MB   walkrie  0/40F01AC8     1           0      ok    2026-08-28 15:02:37
+old_slot   CRITICAL   no      412 GB    n/a      n/a            n/a         n/a    n/a   n/a
 ```
+
+ACTIVE is independent of STATE: a slot can be CRITICAL while still active
+(e.g. `wal_status` degraded), or CRITICAL because it's inactive and
+retaining WAL (the two are separate facts in `slot_health`, not implied by
+each other).
 
 `ADAPTER`/`PROCESSED LSN`/`EVENTS/SEC`/`QUEUE`/`SINK` all read "n/a" when no
 adapter has reported for a slot yet -- `adapter_metrics` is schema-free JSON
@@ -72,3 +78,10 @@ only the latest sample. Runs on its own time axis: adapter report ticks and
 pgslot's own `collect()` ticks are independently scheduled, so don't expect
 its timestamps to line up row-for-row with `pgslot history`'s output for the
 same slot.
+
+`pgslot publications` reads `pgslot.available_publications` -- a plain
+wrapper over `pg_publication`, informational only. It cannot be joined to
+slot health: `pg_replication_slots` doesn't record which publication a slot
+consumes (that mapping only exists in subscriber/adapter config, e.g.
+Walkrie's `[[source]]` blocks), so this is a standalone list, not a
+per-slot column.

@@ -67,3 +67,12 @@ include the views (`\dp pgslot.slot_pipeline` as a superuser) -- if pgslot's
 extension schema was ever dropped and recreated on this cluster, view/
 function ACLs reset to empty and need `scripts/roles.sql` re-run (safe to
 re-run any time, it's idempotent).
+
+**`events_per_sec` reads `0` for a `backfill = true` source even while
+`queue_depth` is visibly draining:** not a bug. Walkrie's backfill drains
+through a separate `walkrie_worker` process, not the main `EventDispatcher`
+that `PgslotReporter`'s live event counter instruments, so that process's
+throughput is architecturally invisible to the counter. `queue_depth` still
+reads correctly during backfill (it's dispatcher-wide, not per-process) --
+use it, not `events_per_sec`, to judge backfill progress. Confirmed against
+`cdc_backfill_slot` in the 2026-08-28 live multi-source test.

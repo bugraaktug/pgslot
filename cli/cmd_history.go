@@ -7,7 +7,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/bugraaktug/pgslot/cli/internal/format"
-	"github.com/bugraaktug/pgslot/cli/internal/pg"
+	"github.com/bugraaktug/pgslot/cli/pg"
 )
 
 func cmdHistory(db *sql.DB, w io.Writer, slotName string, limit int) error {

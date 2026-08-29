@@ -8,7 +8,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/bugraaktug/pgslot/cli/internal/format"
-	"github.com/bugraaktug/pgslot/cli/internal/pg"
+	"github.com/bugraaktug/pgslot/cli/pg"
 )
 
 func renderSlotsTable(w io.Writer, slots []pg.SlotHealth) {
