@@ -30,29 +30,6 @@ without granting anything broader than `SELECT` on a handful of views.
   (restart required) or an external scheduler (no restart) is a deploy-time
   choice, not an install-time one.
 
-## Layout
-
-```
-pgslot/
-├── pgslot.control          extension metadata
-├── Makefile                 PGXS build (SQL/PLpgSQL only, no C compile step)
-├── sql/
-│   └── pgslot--0.2.sql      tables, collect()/prune()/report_metric(), views
-├── scripts/
-│   └── roles.sql             pgslot_monitor / pgslot_collector / pgslot_adapter
-├── adapters/
-│   └── README.md              reporting contract (Walkrie is the worked example)
-├── src/                       background worker -- the recommended way to run
-│   ├── pgslot_worker.c          collection; its own PGXS build, not part of
-│   ├── pgslot_config.{h,c}       the top-level `make install`
-│   └── Makefile                 see src/README.md
-├── cli/                       Go CLI -- health/slots/watch/history
-│   ├── main.go, cmd_*.go, internal/
-│   └── Makefile
-└── test/
-    └── sql/basic.sql            smoke test
-```
-
 ## Install
 
 ```bash
@@ -125,15 +102,28 @@ surface its own pipeline state (`processed_lsn`, `events_per_sec`,
 `queue_depth`, ...) joined against Postgres-side slot health in
 `pgslot.slot_pipeline`.
 
-## CLI
+## CLI & TUI
 
-See `cli/README.md`. `pgslot health` / `pgslot slots` / `pgslot watch` /
-`pgslot history <slot>` -- a Go binary over the same read-only views.
+Two ways to watch live slot and pipeline state beyond one-off SQL queries,
+both Go binaries over the same read-only views -- no separate install path,
+no broader grants than `pgslot_monitor` already gives you.
+
+- **CLI** (`cli/`, see `cli/README.md`) -- `pgslot health` / `slots` /
+  `watch` / `history <slot>` / `pipeline` / `pipeline-history <slot>` /
+  `publications`. `pgslot watch` auto-refreshes in place for a live view
+  from a script or a plain terminal.
+- **TUI** (`ui/`, see `ui/README.md`) -- an interactive terminal dashboard
+  (pgAdmin-style: a connections tree alongside live-polling Overview/
+  Publications/detail tabs) for watching multiple slots' health and
+  adapter pipeline state at once, with per-slot history trends a click
+  away, instead of hand-typing SQL per slot.
 
 ## License
 
 pgslot is licensed under the [Apache License, Version 2.0](./LICENSE).
 The CLI depends on [`lib/pq`](https://github.com/lib/pq) (BSD 3-Clause).
+The TUI depends on [`rivo/tview`](https://github.com/rivo/tview) (MIT) and
+[`gdamore/tcell`](https://github.com/gdamore/tcell) (Apache 2.0).
 
 Developed with AI assistance via [Claude Code](https://claude.com/claude-code).
 
